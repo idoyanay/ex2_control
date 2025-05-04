@@ -112,13 +112,9 @@ def run_q_c():
         Yi = H @ true_x + np.random.normal(0, np.sqrt(R))   # taking the current output of the system
         ei = Yi - H @ x_hat_i                       # updaiting the error i
         Ki = (F @ Pi @ H.T + G @ S) @ np.linalg.inv(H @ Pi @ H.T + R) # updaiting the K(p, i)
-
         x_hat_i = F @ x_hat_i + Ki @ ei                                   # updaiting the x_hat_i
-
         w = np.random.multivariate_normal([0, 0], Q).reshape(2, 1)    # simulate the noise w
         true_x = F @ true_x + B @ u + G @ w                           # updaiting the true x_i
-
-
         Rei = H @ Pi @ H.T + R                                        # updaiting the R(i)
         Pi = F @ Pi @ F.T + G.T @ Q @ G.T - Ki @ Rei @ Ki.T           # updaiting the error covariance
 
@@ -159,50 +155,51 @@ def run_q_d():
 
     for run in range(num_runs):
         # Initial states
-        x0 = np.array([[0], [1]])  # true initial state
         x_hat = x0.copy()          # initial Kalman estimate
-        P = np.eye(2)              # initial error covariance
+        P = P0
 
         true_x = x0.copy()
 
         for t in range(num_steps):
-            # Simulate measurement
+            # Simulate measurement (noisy position)
             y = H @ true_x + np.random.normal(0, np.sqrt(R))
 
-            # --- Kalman Predictor ---
+            # --- Kalman Prediction ---
             e = y - H @ x_hat
             Re = H @ P @ H.T + R
             Kp = (F @ P @ H.T + G @ S) @ np.linalg.inv(Re)
             x_hat = F @ x_hat + Kp @ e
             P = F @ P @ F.T + G.T @ Q @ G.T - Kp @ Re @ Kp.T
+            kalman_pred_pos = x_hat[0, 0]
 
-            # --- Naive Estimator ---
-            naive_pos = y.item()  # just take measurement as position estimate
+            # --- Naive Prediction ---
+            naive_state = np.array([[y.item()], [0]])  # y = position, assume v = 0
+            naive_pred = F @ naive_state
+            naive_pred_pos = naive_pred[0, 0]
 
-            # --- Store squared errors (only for position) ---
-            true_pos = true_x[0, 0]
-            kalman_errors[run, t] = (x_hat[0, 0] - true_pos) ** 2
-            naive_errors[run, t] = (naive_pos - true_pos) ** 2
-
-            # --- True system update ---
+            # --- Advance true system to next step ---
             w = np.random.multivariate_normal([0, 0], Q).reshape(2, 1)
             true_x = F @ true_x + B @ u + G @ w
 
-        # Compute error variance over all runs
-        kalman_var = np.mean(kalman_errors, axis=0)
-        naive_var = np.mean(naive_errors, axis=0)
+            # --- Store position prediction errors ---
+            true_pos_next = true_x[0, 0]
+            kalman_errors[run, t] = (kalman_pred_pos - true_pos_next) ** 2
+            naive_errors[run, t] = (naive_pred_pos - true_pos_next) ** 2
+
+        # Compute mean squared prediction error
+    kalman_var = np.mean(kalman_errors, axis=0)
+    naive_var = np.mean(naive_errors, axis=0)
 
     # --- Plotting ---
     plt.figure(figsize=(10, 5))
-    plt.plot(kalman_var, label='Kalman Filter Error Variance (position)')
-    plt.plot(naive_var, label='Naive Estimator Error Variance (position)')
-    plt.title('Monte Carlo: Position Estimation Error Variance')
+    plt.plot(kalman_var, label='Kalman Predictor Error Variance (position)')
+    plt.plot(naive_var, label='Naive Predictor Error Variance (position)')
+    plt.title('Monte Carlo: Position Prediction Error Variance')
     plt.xlabel('Time step')
-    plt.ylabel('Variance')
+    plt.ylabel('Prediction Variance')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig('question_d.png')
     plt.show()
 
 
